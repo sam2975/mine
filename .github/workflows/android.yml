@@ -1,26 +1,49 @@
-name: Android CI
-
+name: Build TERO Android Tablet APK
 on:
+  workflow_dispatch:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches: [main, master]
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: read
     steps:
-    - uses: actions/checkout@v4
-    - name: set up JDK 11
-      uses: actions/setup-java@v4
-      with:
-        java-version: '11'
-        distribution: 'temurin'
-        cache: gradle
-
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
-    - name: Build with Gradle
-      run: ./gradlew build
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Find project folder
+        id: proj
+        run: |
+          f=$(find . -name settings.gradle -not -path './.git/*' | head -n 1)
+          if [ -z "$f" ]; then
+            echo "settings.gradle 파일을 찾을 수 없습니다. 압축을 푼 파일이 모두 업로드됐는지 확인하세요."
+            exit 1
+          fi
+          echo "dir=$(dirname "$f")" >> "$GITHUB_OUTPUT"
+          echo "프로젝트 폴더: $(dirname "$f")"
+      - name: Install Android 35 SDK
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - name: Build debug APK
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: gradle --no-daemon assembleDebug
+      - name: Rename APK
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/dist/TERO_Factory_OS_Tablet_v1.0.0-debug.apk"
+          cd "$GITHUB_WORKSPACE/dist"
+          sha256sum TERO_Factory_OS_Tablet_v1.0.0-debug.apk > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TERO-Factory-OS-Tablet-APK
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
